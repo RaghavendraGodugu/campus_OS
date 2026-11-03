@@ -366,6 +366,7 @@ function CreateDriveDialog({ onClose }) {
     semesters: "",
   });
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
 
   const createCompany = useMutation({
     mutationFn: () =>
@@ -402,16 +403,28 @@ function CreateDriveDialog({ onClose }) {
       queryClient.invalidateQueries({ queryKey: ["placement", "drives"] });
       onClose();
     },
-    onError: (failure) => setError(failure.message),
+    onError: (failure) => {
+      const failures = failure.fieldErrors ?? {};
+      setFieldErrors(failures);
+      setError(Object.keys(failures).length ? "" : failure.message);
+    },
   });
 
   const options = companies.data?.data?.companies ?? [];
+  const datesInverted =
+    form.applicationDeadline &&
+    form.driveDate &&
+    form.driveDate < form.applicationDeadline;
   const invalid =
     !companyId ||
     !form.title.trim() ||
     !form.role.trim() ||
     !form.applicationDeadline ||
-    !form.driveDate;
+    !form.driveDate ||
+    datesInverted;
+  const driveDateError =
+    fieldErrors.driveDate ??
+    (datesInverted ? "The drive cannot be before the application deadline" : undefined);
 
   return (
     <Modal
@@ -427,7 +440,11 @@ function CreateDriveDialog({ onClose }) {
           <Button
             loading={createDrive.isPending}
             disabled={invalid}
-            onClick={() => createDrive.mutate()}
+            onClick={() => {
+              setError("");
+              setFieldErrors({});
+              createDrive.mutate();
+            }}
           >
             Create drive
           </Button>
@@ -435,7 +452,7 @@ function CreateDriveDialog({ onClose }) {
       }
     >
       <div className="space-y-4">
-        <Field label="Company" htmlFor="drive-company" required>
+        <Field label="Company" htmlFor="drive-company" required error={fieldErrors.company}>
           <select
             id="drive-company"
             className={inputClass}
@@ -489,7 +506,7 @@ function CreateDriveDialog({ onClose }) {
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Title" htmlFor="drive-title" required>
+          <Field label="Title" htmlFor="drive-title" required error={fieldErrors.title}>
             <input
               id="drive-title"
               className={inputClass}
@@ -500,7 +517,7 @@ function CreateDriveDialog({ onClose }) {
               placeholder="Graduate Engineer 2027"
             />
           </Field>
-          <Field label="Role" htmlFor="drive-role" required>
+          <Field label="Role" htmlFor="drive-role" required error={fieldErrors.role}>
             <input
               id="drive-role"
               className={inputClass}
@@ -514,7 +531,12 @@ function CreateDriveDialog({ onClose }) {
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Application deadline" htmlFor="drive-deadline" required>
+          <Field
+            label="Application deadline"
+            htmlFor="drive-deadline"
+            required
+            error={fieldErrors.applicationDeadline}
+          >
             <input
               id="drive-deadline"
               type="date"
@@ -528,7 +550,12 @@ function CreateDriveDialog({ onClose }) {
               }
             />
           </Field>
-          <Field label="Drive date" htmlFor="drive-date" required>
+          <Field
+            label="Drive date"
+            htmlFor="drive-date"
+            required
+            error={driveDateError}
+          >
             <input
               id="drive-date"
               type="date"
@@ -542,7 +569,7 @@ function CreateDriveDialog({ onClose }) {
         </div>
 
         <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="Location" htmlFor="drive-location">
+          <Field label="Location" htmlFor="drive-location" error={fieldErrors.location}>
             <input
               id="drive-location"
               className={inputClass}
@@ -553,7 +580,11 @@ function CreateDriveDialog({ onClose }) {
               placeholder="Bengaluru"
             />
           </Field>
-          <Field label="CTC (₹ per year)" htmlFor="drive-ctc">
+          <Field
+            label="CTC (₹ per year)"
+            htmlFor="drive-ctc"
+            error={fieldErrors.ctcPaise}
+          >
             <input
               id="drive-ctc"
               type="number"
@@ -570,6 +601,7 @@ function CreateDriveDialog({ onClose }) {
             label="Semesters"
             htmlFor="drive-semesters"
             hint="Comma-separated; blank means all."
+            error={fieldErrors.eligibleSemesters}
           >
             <input
               id="drive-semesters"
