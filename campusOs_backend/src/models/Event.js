@@ -1,5 +1,7 @@
 const mongoose = require("mongoose");
 
+const { CONTENT_RETENTION_MS } = require("../config/constants");
+
 /**
  * A campus event. Workshops, fests, seminars, sports days.
  *
@@ -40,6 +42,14 @@ const eventSchema = new mongoose.Schema(
       required: true,
       ref: "User",
     },
+    /**
+     * When the record is due to be removed: 24 hours after the event ends.
+     *
+     * Kept as a real field rather than computed at query time so a TTL index
+     * can do the deletion. The value is refreshed on every save, which matters
+     * because an organiser may extend `endsAt`.
+     */
+    deleteAt: { type: Date, default: null },
   },
   {
     timestamps: true,
@@ -48,6 +58,8 @@ const eventSchema = new mongoose.Schema(
         ret.id = ret._id;
         delete ret._id;
         delete ret.__v;
+        // Internal retention bookkeeping, not part of the calendar contract.
+        delete ret.deleteAt;
         return ret;
       },
     },
@@ -55,5 +67,22 @@ const eventSchema = new mongoose.Schema(
 );
 
 eventSchema.index({ status: 1, startsAt: -1 });
+
+/**
+ * Retention: the calendar forgets a completed event after 24 hours.
+ *
+ * `endsAt` is optional, so the completion time is `endsAt` when present and
+ * `startsAt` otherwise — an event with no stated end is considered complete
+ * when it begins. A TTL index on `deleteAt` enforces the window in the database
+ * itself; the save hook below keeps the field in step with edits.
+ */
+eventSchema.pre("save", function stampDeletion() {
+  const completion = this.endsAt ?? this.startsAt;
+  this.deleteAt = completion
+    ? new Date(completion.getTime() + CONTENT_RETENTION_MS)
+    : null;
+});
+
+eventSchema.index({ deleteAt: 1 }, { expireAfterSeconds: 0 });
 
 module.exports = mongoose.model("Event", eventSchema);

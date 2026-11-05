@@ -19,6 +19,7 @@ const {
 const { ApiError } = require("../utils/ApiError");
 const { P, userHasPermission } = require("../utils/permissions");
 const auditService = require("./audit.service");
+const studentDirectory = require("./studentDirectory.service");
 
 function assertManage(user) {
   if (!userHasPermission(user, P.HOSTEL_MANAGE)) {
@@ -281,6 +282,17 @@ async function decideLeave({ user, id, payload, req }) {
   return leave.toJSON();
 }
 
+/**
+ * Look up students to allocate a room to.
+ *
+ * Delegated to the shared directory service rather than narrowed to roll
+ * numbers here: a warden often knows the name and not the roll, and duplicating
+ * the join logic is how the two lookups drift apart.
+ */
+async function searchStudents({ q }) {
+  return studentDirectory.search({ q });
+}
+
 module.exports = {
   listHostels,
   createHostel,
@@ -293,4 +305,5 @@ module.exports = {
   requestLeave,
   listLeaves,
   decideLeave,
+  searchStudents,
 };

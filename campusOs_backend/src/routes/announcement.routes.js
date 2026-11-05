@@ -111,4 +111,14 @@ router.post(
   announcementController.pinAnnouncement
 );
 
+/** DELETE /api/v1/announcements/:id — administrators only. */
+router.delete(
+  "/announcements/:id",
+  authenticate,
+  csrfProtection,
+  requirePermission(P.ANNOUNCEMENT_MANAGE),
+  validate({ params: announcementIdentifier }),
+  announcementController.deleteAnnouncement
+);
+
 module.exports = router;

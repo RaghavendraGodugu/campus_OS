@@ -2,7 +2,7 @@ const { ApiError } = require("../utils/ApiError");
 const auditService = require("./audit.service");
 const Event = require("../models/Event");
 const EventRsvp = require("../models/EventRsvp");
-const { AUDIT_ACTION } = require("../config/constants");
+const { AUDIT_ACTION, CONTENT_RETENTION_MS } = require("../config/constants");
 const { userHasPermission } = require("../utils/permissions");
 
 /**
@@ -54,7 +54,21 @@ function assertStatusTransition(from, to) {
 async function listEvents({ user }) {
   const canManage = userHasPermission(user, "event:manage:institution");
 
-  const filter = canManage ? {} : { status: "PUBLISHED" };
+  // Completed events drop off after the retention window. The TTL index does
+  // the real deletion; this clause means the calendar does not show them while
+  // the monitor is between sweeps (or before the index has been synced).
+  const cutoff = new Date(Date.now() - CONTENT_RETENTION_MS);
+  const retention = {
+    $or: [
+      { endsAt: { $gt: cutoff } },
+      { endsAt: null, startsAt: { $gt: cutoff } },
+    ],
+  };
+
+  const filter = canManage
+    ? retention
+    : { $and: [retention, { status: "PUBLISHED" }] };
+
   const events = await Event.find(filter).sort({ startsAt: -1 }).limit(200).lean();
 
   const counts = await EventRsvp.aggregate([
@@ -67,7 +81,7 @@ async function listEvents({ user }) {
     .lean();
   const mineSet = new Set(mineRows.map((row) => String(row.event)));
 
-  return events.map((event) => ({
+  return events.map(({ deleteAt: _deleteAt, ...event }) => ({
     ...event,
     id: String(event._id),
     rsvpCount: countMap.get(String(event._id)) ?? 0,

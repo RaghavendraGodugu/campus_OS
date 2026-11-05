@@ -40,6 +40,7 @@ const {
   AUDIENCE_SCOPE,
   ANNOUNCEMENT_PRIORITY,
   AUDIT_ACTION,
+  CONTENT_RETENTION_MS,
 } = require("../config/constants");
 const { logger } = require("../config/logger");
 const { getStorage } = require("../config/storage");
@@ -126,9 +127,14 @@ async function audienceQueryFor(user, { viewerScope } = {}) {
 
 /** The common listing clause: published, not expired, not scheduled ahead. */
 function liveClause(now = new Date()) {
+  // An announcement is deleted after the retention window. Excluding older
+  // rows here keeps the list honest even in the minute before the TTL monitor
+  // gets to them, and on a deployment whose indexes have not been re-synced.
+  const oldest = new Date(now.getTime() - CONTENT_RETENTION_MS);
+
   return {
     status: "PUBLISHED",
-    publishedAt: { $lte: now },
+    publishedAt: { $gte: oldest, $lte: now },
     $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }],
   };
 }
@@ -148,8 +154,14 @@ async function listAnnouncements({ user, page = 1, limit = 20, includeExpired = 
 
   const audience = await audienceQueryFor(user);
 
+  // `includeExpired` is a management convenience, not a reader option: without
+  // this check any authenticated reader could ask for notices past their expiry
+  // and sidestep the lifecycle. Managers are already identifiable here because
+  // `audienceQueryFor` returns null only for them.
+  const includeHidden = Boolean(includeExpired) && audience === null;
+
   const clauses = [
-    includeExpired
+    includeHidden
       ? { status: "PUBLISHED", publishedAt: { $lte: new Date() } }
       : liveClause(),
   ];
@@ -190,11 +202,13 @@ async function getAnnouncement({ user, id, allowExpired = false }) {
   }
 
   const audience = await audienceQueryFor(user);
+  const oldest = new Date(Date.now() - CONTENT_RETENTION_MS);
 
   // Same predicate, applied to one document.
   const readable =
     announcement.status === "PUBLISHED" &&
     (announcement.publishedAt ?? 0) <= new Date() &&
+    (announcement.publishedAt ?? 0) >= oldest &&
     (allowExpired ||
       announcement.expiresAt === null ||
       announcement.expiresAt > new Date()) &&
@@ -660,6 +674,63 @@ async function setPinned({ user, id, pinned, req }) {
   return updated;
 }
 
+/**
+ * Permanently remove an announcement.
+ *
+ * Retention removes notices automatically, but an officer sometimes needs one
+ * down immediately — a mistaken notice cannot wait for the sweep. This is
+ * manager-only: readers get neither the route nor the permission.
+ */
+async function deleteAnnouncement({ user, id, req }) {
+  if (!userHasPermission(user, P.ANNOUNCEMENT_MANAGE)) {
+    throw ApiError.forbidden("You cannot delete announcements");
+  }
+
+  const term = String(id).trim();
+  const filter = /^[a-f\d]{24}$/i.test(term)
+    ? { _id: term }
+    : { reference: term.toUpperCase() };
+
+  const announcement = await Announcement.findOne(filter);
+  if (!announcement) {
+    throw ApiError.notFound("Announcement not found");
+  }
+
+  const storageKey = announcement.attachment?.storageKey;
+
+  await Announcement.deleteOne({ _id: announcement._id });
+
+  // The record is gone; the file must not outlive it. A storage failure is
+  // logged rather than thrown — the announcement is already deleted, and
+  // failing the request would suggest otherwise.
+  if (storageKey) {
+    try {
+      await getStorage().delete(storageKey);
+    } catch (error) {
+      logger.warn(
+        { err: error, storageKey },
+        "Announcement deleted but its attachment file could not be removed"
+      );
+    }
+  }
+
+  await auditService.record({
+    action: AUDIT_ACTION.DELETE,
+    entity: "Announcement",
+    entityId: announcement._id,
+    entityRef: announcement.reference,
+    metadata: {
+      title: announcement.title,
+      status: announcement.status,
+      hadAttachment: Boolean(storageKey),
+    },
+    actor: user,
+    req,
+  });
+
+  return announcement;
+}
+
 /** Private download of an attachment, subject to the same audience rule. */
 async function resolveAttachment({ user, id }) {
   const announcement = await getAnnouncement({ user, id });
@@ -698,6 +769,7 @@ module.exports = {
   getAnnouncement,
   archiveAnnouncement,
   setPinned,
+  deleteAnnouncement,
   fanOut,
   resolveAttachment,
   readAttachmentBytes,

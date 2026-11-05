@@ -24,7 +24,7 @@
 
 const mongoose = require("mongoose");
 
-const { ROLES, AUDIENCE_SCOPE, ANNOUNCEMENT_PRIORITY } = require("../config/constants");
+const { ROLES, AUDIENCE_SCOPE, ANNOUNCEMENT_PRIORITY, CONTENT_RETENTION_HOURS } = require("../config/constants");
 
 const announcementSchema = new mongoose.Schema(
   {
@@ -124,7 +124,8 @@ const announcementSchema = new mongoose.Schema(
       type: Date,
       required: [true, "A publication date is required"],
       default: Date.now,
-      index: true,
+      // The TTL index declared below also indexes this field; a second plain
+      // index here would collide with it and silently drop the TTL option.
     },
 
     /** Stops being listed after this instant. Null means it never expires. */
@@ -241,6 +242,20 @@ announcementSchema.index({ status: 1, publishedAt: -1 });
 
 // Pinned first, then newest.
 announcementSchema.index({ pinned: -1, publishedAt: -1 });
+
+/**
+ * Retention: a notice disappears 24 hours after it is published.
+ *
+ * A TTL index rather than an application timer, because deletion must happen
+ * even when the API is not running — and because the database is the only
+ * component guaranteed to be there. `publishedAt` is a required Date, so the
+ * TTL monitor never sees a document it cannot expire. Pinned notices are not
+ * exempt: "keep to the top" is not "keep forever".
+ */
+announcementSchema.index(
+  { publishedAt: 1 },
+  { expireAfterSeconds: CONTENT_RETENTION_HOURS * 60 * 60 }
+);
 
 const Announcement = mongoose.model("Announcement", announcementSchema);
 

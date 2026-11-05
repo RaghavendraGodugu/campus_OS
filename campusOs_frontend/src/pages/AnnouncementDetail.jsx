@@ -1,12 +1,14 @@
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ImageOff, Paperclip } from "lucide-react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, ImageOff, Paperclip, Trash2 } from "lucide-react";
 
-import { apiAssetUrl, apiGet, fetchDocument } from "../api/client";
+import { apiAssetUrl, apiDelete, apiGet, fetchDocument } from "../api/client";
+import { useAuth } from "../context/AuthContext";
 import { formatDateTime, humanise } from "../lib/format";
 import Badge from "../components/ui/Badge";
 import Button from "../components/ui/Button";
+import Modal from "../components/ui/Modal";
 import { ErrorState } from "../components/ui/States";
 import {
   SkeletonHeading,
@@ -23,10 +25,23 @@ import {
  */
 export default function AnnouncementDetail() {
   const { reference } = useParams();
+  const { can } = useAuth();
+  const canDelete = can("announcement:manage:institution");
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [confirming, setConfirming] = useState(false);
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["announcement", reference],
     queryFn: () => apiGet(`/announcements/${reference}`),
+  });
+
+  const remove = useMutation({
+    mutationFn: () => apiDelete(`/announcements/${reference}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["announcements"] });
+      navigate("/announcements");
+    },
   });
 
   // The envelope nests the record one level deeper: data.announcement.
@@ -136,6 +151,46 @@ export default function AnnouncementDetail() {
           </div>
         )}
       </div>
+
+      {canDelete && (
+        <div className="flex justify-end">
+          <Button variant="subtle" onClick={() => setConfirming(true)}>
+            <Trash2 className="size-4" aria-hidden="true" />
+            Delete announcement
+          </Button>
+        </div>
+      )}
+
+      <Modal
+        open={confirming}
+        onClose={() => setConfirming(false)}
+        title="Delete this announcement?"
+        description="It disappears for everyone immediately, including anyone who has not read it yet."
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setConfirming(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              loading={remove.isPending}
+              onClick={() => remove.mutate()}
+            >
+              Delete
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-ink-600 dark:text-ink-300">
+          “{announcement.title}” will be removed permanently. This cannot be
+          undone.
+        </p>
+        {remove.isError && (
+          <p role="alert" className="mt-3 text-sm text-red-600 dark:text-red-300">
+            {remove.error?.message}
+          </p>
+        )}
+      </Modal>
     </article>
   );
 }

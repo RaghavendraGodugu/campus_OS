@@ -101,6 +101,27 @@ describe("publishing and visibility", () => {
     expect(after[0].status).toBe("PUBLISHED");
   });
 
+  it("drops an event from the calendar 24 hours after it ends", async () => {
+    const world = await seed();
+    const hour = 60 * 60 * 1000;
+    const endedLongAgo = new Date(Date.now() - 30 * hour).toISOString();
+
+    await published(world, {
+      startsAt: new Date(Date.now() - 40 * hour).toISOString(),
+      endsAt: endedLongAgo,
+    });
+    await published(world, {
+      startsAt: new Date(Date.now() - 2 * hour).toISOString(),
+      endsAt: new Date(Date.now() - hour).toISOString(),
+    });
+
+    const visible = await eventService.listEvents({ user: world.student.user });
+    expect(visible).toHaveLength(1);
+    expect(new Date(visible[0].endsAt).getTime()).toBeGreaterThan(
+      Date.now() - 24 * hour
+    );
+  });
+
   it("refuses to un-publish a published event", async () => {
     const world = await seed();
     const event = await published(world);

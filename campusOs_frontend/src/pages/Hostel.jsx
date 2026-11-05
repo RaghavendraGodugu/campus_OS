@@ -819,11 +819,37 @@ function AllocateDialog({ hostels, onClose }) {
               onChange={(event) => setQ(event.target.value)}
               placeholder="DEMO-CS-001 or a name"
             />
-            <Button variant="secondary" onClick={() => setSearched(q)}>
+            <Button
+              variant="secondary"
+              disabled={q.trim().length < 2}
+              onClick={() => {
+                setStudentId("");
+                setSearched(q.trim());
+              }}
+            >
               <Search className="size-4" aria-hidden="true" /> Search
             </Button>
           </div>
         </Field>
+
+        {students.isFetching && (
+          <p className="text-sm text-ink-500 dark:text-ink-400">Searching…</p>
+        )}
+
+        {students.isError && (
+          <p role="alert" className="text-sm text-red-600 dark:text-red-300">
+            {students.error?.message ?? "Could not search for students."}
+          </p>
+        )}
+
+        {searched &&
+          !students.isFetching &&
+          !students.isError &&
+          options.length === 0 && (
+            <p className="text-sm text-ink-500 dark:text-ink-400">
+              No students matched “{searched}”.
+            </p>
+          )}
 
         {options.length > 0 && (
           <Field label="Student" htmlFor="allocate-student" required>

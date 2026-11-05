@@ -10,6 +10,8 @@
 const { createApp } = require("./app");
 const { getEnv } = require("./config/env");
 const { logger } = require("./config/logger");
+const { CONTENT_RETENTION_MS } = require("./config/constants");
+const Event = require("./models/Event");
 const {
   connectDB,
   disconnectDB,
@@ -37,6 +39,23 @@ async function startServer({ mongoUri } = {}) {
   // corrected index definition would otherwise never reach a database that
   // already exists. See the comment on syncIndexes() in config/db.js.
   await syncIndexes();
+
+  // Events written before `deleteAt` existed have no TTL value, so the index
+  // would never expire them. Stamp them once here; every later save maintains
+  // the field itself. This is an update, not an index operation, so it runs in
+  // production too.
+  await Event.updateMany(
+    { deleteAt: null },
+    [
+      {
+        $set: {
+          deleteAt: {
+            $add: [{ $ifNull: ["$endsAt", "$startsAt"] }, CONTENT_RETENTION_MS],
+          },
+        },
+      },
+    ]
+  );
 
   const app = createApp();
 

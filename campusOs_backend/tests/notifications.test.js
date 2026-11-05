@@ -594,6 +594,43 @@ describe("announcement lifecycle", () => {
     expectError(second, 409, "CONFLICT");
   });
 
+  it("deletes a notice outright for an officer", async () => {
+    const author = await officer();
+    const posted = await postAnnouncement(author, {
+      title: "Notice taken down by hand",
+      body: "An officer should be able to remove a mistaken notice at once.",
+    });
+    const reference = posted.res.body.data.announcement.reference;
+
+    const res = await posted.agent
+      .delete(`/api/v1/announcements/${reference}`)
+      .set("X-CSRF-Token", posted.csrfToken);
+
+    expect(res.status).toBe(200);
+    expect(await Announcement.countDocuments({ reference })).toBe(0);
+  });
+
+  it("refuses deletion by faculty and students", async () => {
+    const author = await officer();
+    const posted = await postAnnouncement(author, {
+      title: "Notice nobody else may delete",
+      body: "Only the offices that manage notices may remove one.",
+    });
+    const reference = posted.res.body.data.announcement.reference;
+
+    for (const role of [ROLES.FACULTY, ROLES.STUDENT]) {
+      const user = await createUser({ role });
+      const { agent, csrfToken } = await loginAs(user);
+      const res = await agent
+        .delete(`/api/v1/announcements/${reference}`)
+        .set("X-CSRF-Token", csrfToken);
+
+      expect(res.status).toBe(403);
+    }
+
+    expect(await Announcement.countDocuments({ reference })).toBe(1);
+  });
+
   it("pins a notice to the top of the list", async () => {
     const author = await officer();
     const student = await createStudent();

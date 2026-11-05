@@ -249,6 +249,13 @@ function indexBelongsToSchema(wanted, existing) {
     return false;
   }
 
+  // TTL options are part of the definition. Without this comparison a plain
+  // index on the same key would look "already correct" and the expiry would
+  // never be installed — a retention rule that silently does nothing.
+  if ((wanted.expireAfterSeconds ?? null) !== (existing.expireAfterSeconds ?? null)) {
+    return false;
+  }
+
   const wantedPartial = wanted.partialFilterExpression;
   const existingPartial = existing.partialFilterExpression;
 

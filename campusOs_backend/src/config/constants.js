@@ -29,6 +29,19 @@ const ROLE_VALUES = Object.freeze(Object.values(ROLES));
 const STAFF_ROLES = Object.freeze(ROLE_VALUES.filter((role) => role !== ROLES.STUDENT));
 
 /**
+ * How long time-bound content stays after it stops being useful.
+ *
+ * An announcement is removed this many hours after publication; an event this
+ * many hours after it ends. The retention window is a product rule rather than
+ * a storage detail, so it lives here and is shared by the models, the query
+ * filters and the cleanup sweeps.
+ */
+const CONTENT_RETENTION_HOURS = 24;
+
+/** The same window in milliseconds, for date arithmetic. */
+const CONTENT_RETENTION_MS = CONTENT_RETENTION_HOURS * 60 * 60 * 1000;
+
+/**
  * Universal request workflow states (spec §9).
  *
  * Transitions are NOT free-form. The legal edges are declared once, in
@@ -477,6 +490,8 @@ module.exports = {
   ROLES,
   ROLE_VALUES,
   STAFF_ROLES,
+  CONTENT_RETENTION_HOURS,
+  CONTENT_RETENTION_MS,
   REQUEST_STATUS,
   REQUEST_STATUS_VALUES,
   TERMINAL_STATUSES,

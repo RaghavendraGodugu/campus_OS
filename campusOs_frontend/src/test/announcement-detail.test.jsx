@@ -4,7 +4,18 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, afterEach } from "vitest";
 
 import AnnouncementDetail from "../pages/AnnouncementDetail";
-import { stubApi, restoreApi } from "./helpers";
+import { AuthProvider } from "../context/AuthContext";
+import { stubApi, restoreApi, session } from "./helpers";
+
+const studentSession = session({
+  user: {
+    id: "s1",
+    fullName: "DEMO Student",
+    email: "s@campusos.local",
+    role: "STUDENT",
+  },
+  permissions: ["announcement:read:institution"],
+});
 
 /**
  * The envelope trap.
@@ -49,16 +60,18 @@ function renderAt(reference) {
   });
 
   return render(
-    <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[`/announcements/${reference}`]}>
-        <Routes>
-          <Route
-            path="/announcements/:reference"
-            element={<AnnouncementDetail />}
-          />
-        </Routes>
-      </MemoryRouter>
-    </QueryClientProvider>,
+    <MemoryRouter initialEntries={[`/announcements/${reference}`]}>
+      <QueryClientProvider client={client}>
+        <AuthProvider>
+          <Routes>
+            <Route
+              path="/announcements/:reference"
+              element={<AnnouncementDetail />}
+            />
+          </Routes>
+        </AuthProvider>
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
 }
 
@@ -68,7 +81,10 @@ describe("announcement detail", () => {
   });
 
   it("reads the record out of the nested envelope", async () => {
-    stubApi([["/announcements/AN-2026-000003", envelopeFor("AN-2026-000003")]]);
+    stubApi([
+      ["/auth/me", studentSession],
+      ["/announcements/AN-2026-000003", envelopeFor("AN-2026-000003")],
+    ]);
 
     renderAt("AN-2026-000003");
 
@@ -86,7 +102,10 @@ describe("announcement detail", () => {
   });
 
   it("renders an image attachment inline rather than as a download", async () => {
-    stubApi([["/announcements/AN-2026-000004", envelopeFor("AN-2026-000004")]]);
+    stubApi([
+      ["/auth/me", studentSession],
+      ["/announcements/AN-2026-000004", envelopeFor("AN-2026-000004")],
+    ]);
 
     renderAt("AN-2026-000004");
 
@@ -107,7 +126,10 @@ describe("announcement detail", () => {
   });
 
   it("offers a retry when the image fails to load", async () => {
-    stubApi([["/announcements/AN-2026-000005", envelopeFor("AN-2026-000005")]]);
+    stubApi([
+      ["/auth/me", studentSession],
+      ["/announcements/AN-2026-000005", envelopeFor("AN-2026-000005")],
+    ]);
 
     renderAt("AN-2026-000005");
 
@@ -132,5 +154,48 @@ describe("announcement detail", () => {
         "/api/v1/announcements/AN-2026-000005/attachment?retry=1",
       ),
     );
+  });
+
+  it("shows the delete control only to announcement administrators", async () => {
+    stubApi([
+      ["/auth/me", studentSession],
+      ["/announcements/AN-2026-000006", envelopeFor("AN-2026-000006")],
+    ]);
+
+    renderAt("AN-2026-000006");
+
+    await screen.findByRole("heading", { name: /sports day poster/i });
+    expect(
+      screen.queryByRole("button", { name: /delete announcement/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("lets an administrator delete a notice after confirming", async () => {
+    const dean = session({
+      user: {
+        id: "a1",
+        fullName: "DEMO Dean",
+        email: "dean@campusos.local",
+        role: "DEAN",
+      },
+      permissions: [
+        "announcement:read:institution",
+        "announcement:manage:institution",
+      ],
+    });
+    stubApi([
+      ["/auth/me", dean],
+      ["/announcements/AN-2026-000007", envelopeFor("AN-2026-000007")],
+    ]);
+
+    renderAt("AN-2026-000007");
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /delete announcement/i }),
+    );
+
+    expect(
+      await screen.findByText(/will be removed permanently/i),
+    ).toBeInTheDocument();
   });
 });

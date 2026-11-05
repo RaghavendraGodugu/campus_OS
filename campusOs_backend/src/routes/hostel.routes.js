@@ -17,9 +17,25 @@ const {
   decideLeaveSchema,
   leaveQuerySchema,
   allocationQuerySchema,
+  searchStudentsQuerySchema,
 } = require("../validators/hostel.validator");
 
 const router = express.Router();
+
+/**
+ * GET /hostel/students?q=
+ *
+ * Declared before the parameterised routes so `students` is never captured as
+ * an id. Gated on the managing permission: this is a tool for the allocation
+ * form, not a directory every signed-in user may query.
+ */
+router.get(
+  "/hostel/students",
+  authenticate,
+  requirePermission(P.HOSTEL_MANAGE),
+  validate({ query: searchStudentsQuerySchema }),
+  controller.searchStudents
+);
 
 router.get(
   "/hostel/hostels",

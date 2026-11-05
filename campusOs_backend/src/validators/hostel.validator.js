@@ -61,6 +61,19 @@ const allocationQuerySchema = z
   .object({ status: z.string().trim().max(20).optional() })
   .strict();
 
+/**
+ * Student lookup for the allocation picker.
+ *
+ * The bound is deliberately small: this exists to disambiguate a name or roll
+ * number, not to export the student directory. Two characters is the same
+ * threshold the shared directory service applies.
+ */
+const searchStudentsQuerySchema = z
+  .object({
+    q: z.string().trim().min(2, "Type at least 2 characters").max(80),
+  })
+  .strict();
+
 module.exports = {
   idParam,
   createHostelSchema,
@@ -70,4 +83,5 @@ module.exports = {
   decideLeaveSchema,
   leaveQuerySchema,
   allocationQuerySchema,
+  searchStudentsQuerySchema,
 };

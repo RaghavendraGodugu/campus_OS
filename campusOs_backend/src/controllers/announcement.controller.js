@@ -147,6 +147,20 @@ const pinAnnouncement = asyncHandler(async (req, res) => {
   });
 });
 
+/** DELETE /api/v1/announcements/:id — administrators only. */
+const deleteAnnouncement = asyncHandler(async (req, res) => {
+  const removed = await announcementService.deleteAnnouncement({
+    user: req.user,
+    id: req.params.id,
+    req,
+  });
+
+  return sendSuccess(res, {
+    message: `Announcement ${removed.reference} deleted`,
+    data: { reference: removed.reference },
+  });
+});
+
 /** GET /api/v1/announcements/:id/attachment — private download. */
 /**
  * POST /api/v1/announcements/:id/image
@@ -200,6 +214,7 @@ module.exports = {
   getAnnouncement,
   archiveAnnouncement,
   pinAnnouncement,
+  deleteAnnouncement,
   downloadAttachment,
   uploadImage,
   deleteImage,

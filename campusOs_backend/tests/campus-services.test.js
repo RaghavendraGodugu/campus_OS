@@ -180,6 +180,37 @@ describe("campus services", () => {
       });
       expect(decided.status).toBe("APPROVED");
     });
+
+    it("finds a student by roll number or name for allocation", async () => {
+      const world = await seed();
+      const { agent } = await loginAs(world.admin);
+
+      const byRoll = await agent.get(
+        `/api/v1/hostel/students?q=${encodeURIComponent(world.first.student.rollNumber)}`
+      );
+      expect(byRoll.status).toBe(200);
+      expect(byRoll.body.data.students.map((row) => row.studentId)).toContain(
+        String(world.first.student._id)
+      );
+
+      const firstName = world.first.user.fullName.split(" ")[0];
+      const byName = await agent.get(
+        `/api/v1/hostel/students?q=${encodeURIComponent(firstName)}`
+      );
+      expect(byName.status).toBe(200);
+      expect(byName.body.data.students.map((row) => row.studentId)).toContain(
+        String(world.first.student._id)
+      );
+    });
+
+    it("refuses the student lookup to a student", async () => {
+      const world = await seed();
+      const { agent } = await loginAs(world.first.user);
+
+      const res = await agent.get("/api/v1/hostel/students?q=ro");
+
+      expect(res.status).toBe(403);
+    });
   });
 
   describe("library", () => {

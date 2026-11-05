@@ -72,6 +72,20 @@ const listAllocations = asyncHandler(async (req, res) =>
   })
 );
 
+/**
+ * GET /api/v1/hostel/students?q=
+ *
+ * The allocation picker needs a student id, and a warden has a roll number or
+ * a name. Returning a small projection — id, roll, name, semester — keeps this
+ * a lookup rather than a directory export.
+ */
+const searchStudents = asyncHandler(async (req, res) =>
+  sendSuccess(res, {
+    message: "Students matched",
+    data: { students: await service.searchStudents(req.validated.query) },
+  })
+);
+
 const mine = asyncHandler(async (req, res) =>
   sendSuccess(res, {
     message: "Hostel details",
@@ -121,6 +135,7 @@ module.exports = {
   allocate,
   vacate,
   listAllocations,
+  searchStudents,
   mine,
   requestLeave,
   listLeaves,
