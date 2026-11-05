@@ -1,3 +1,4 @@
+
 /**
  * HTTP server entry point.
  *
@@ -12,6 +13,7 @@ const { getEnv } = require("./config/env");
 const { logger } = require("./config/logger");
 const { CONTENT_RETENTION_MS } = require("./config/constants");
 const Event = require("./models/Event");
+
 const {
   connectDB,
   disconnectDB,
@@ -25,42 +27,37 @@ const {
  * @param {string} [options.mongoUri] Override for the database URI.
  */
 async function startServer({ mongoUri } = {}) {
-  // Validate configuration before anything else. A misconfigured deployment
-  // must exit with a readable message, not a stack trace from deep in Mongoose.
+  // Validate configuration.
   const env = getEnv();
 
   registerConnectionListeners();
 
   await connectDB(mongoUri);
 
-  // Development and test only — `syncIndexes()` refuses to run in production.
-  //
-  // `autoIndex` creates missing indexes but never removes stale ones, so a
-  // corrected index definition would otherwise never reach a database that
-  // already exists. See the comment on syncIndexes() in config/db.js.
+  // Development and test only.
   await syncIndexes();
 
-  // Events written before `deleteAt` existed have no TTL value, so the index
-  // would never expire them. Stamp them once here; every later save maintains
-  // the field itself. This is an update, not an index operation, so it runs in
-  // production too.
+  // Backfill missing deleteAt values for existing events.
+  // Use updatePipeline because this is an aggregation pipeline update.
   await Event.updateMany(
     { deleteAt: null },
     [
       {
         $set: {
           deleteAt: {
-            $add: [{ $ifNull: ["$endsAt", "$startsAt"] }, CONTENT_RETENTION_MS],
+            $add: [
+              { $ifNull: ["$endsAt", "$startsAt"] },
+              CONTENT_RETENTION_MS,
+            ],
           },
         },
       },
-    ]
+    ],
+    { updatePipeline: true }
   );
 
   const app = createApp();
 
-  // Express 5 passes listen errors to the callback rather than throwing, so the
-  // EADDRINUSE case must be handled here or the process exits silently.
   const server = app.listen(env.PORT, () => {
     logger.info(
       { port: env.PORT, environment: env.NODE_ENV },
@@ -76,31 +73,33 @@ async function startServer({ mongoUri } = {}) {
       );
       process.exit(1);
     }
+
     logger.error({ err: error }, "HTTP server error");
     process.exit(1);
   });
 
-  // ===== Graceful shutdown =====
-  // Stop accepting connections, let in-flight requests finish, then close the
-  // DB. Without this, a deploy can sever a request mid-write.
+  // Graceful shutdown.
   let shuttingDown = false;
 
   const shutdown = async (signal) => {
     if (shuttingDown) return;
     shuttingDown = true;
+
     logger.info({ signal }, "Shutting down gracefully");
 
-    // Force-exit if connections refuse to drain.
     const forceExit = setTimeout(() => {
       logger.error("Graceful shutdown timed out — forcing exit");
       process.exit(1);
     }, 10000);
+
     forceExit.unref();
 
     server.close(async () => {
       try {
         await disconnectDB();
+
         logger.info("Shutdown complete");
+
         clearTimeout(forceExit);
         process.exit(0);
       } catch (err) {
@@ -113,8 +112,6 @@ async function startServer({ mongoUri } = {}) {
   process.on("SIGTERM", () => shutdown("SIGTERM"));
   process.on("SIGINT", () => shutdown("SIGINT"));
 
-  // An unhandled rejection means a promise failed with no handler. Log it and
-  // shut down rather than continuing in an unknown state.
   process.on("unhandledRejection", (reason) => {
     logger.fatal({ reason }, "Unhandled promise rejection");
     shutdown("unhandledRejection");
@@ -123,17 +120,18 @@ async function startServer({ mongoUri } = {}) {
   return server;
 }
 
-// Only auto-start when executed directly, not when required by a test.
+// Only auto-start when executed directly.
 if (require.main === module) {
   startServer().catch((error) => {
-    // The logger may itself be unusable if the environment is invalid, so
-    // fall back to stderr for that specific case.
     try {
       const { logger: log } = require("./config/logger");
       log.fatal({ err: error }, "Failed to start CampusOS API");
     } catch {
-      process.stderr.write(`Failed to start CampusOS API: ${error.message}\n`);
+      process.stderr.write(
+        `Failed to start CampusOS API: ${error.message}\n`
+      );
     }
+
     process.exit(1);
   });
 }
