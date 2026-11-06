@@ -211,6 +211,31 @@ describe("campus services", () => {
 
       expect(res.status).toBe(403);
     });
+
+    it("returns the ids the allocation screen sends back", async () => {
+      const world = await seed();
+      const { hostel, room } = await hostelFixture(world);
+
+      // The form builds its payload from these two lists. A lean document has
+      // `_id` but no `id`, so omitting the mapping yields `undefined` room ids
+      // and a validation error that names no field.
+      const rooms = await hostelService.listRooms(hostel.id);
+      expect(rooms.find((row) => row.id === String(room.id))).toBeDefined();
+
+      const allocation = await hostelService.allocate({
+        user: world.admin,
+        payload: {
+          student: String(world.first.student._id),
+          room: room.id,
+          academicYear: "2026-27",
+        },
+      });
+
+      const allocations = await hostelService.listAllocations();
+      expect(
+        allocations.find((row) => row.id === String(allocation.id))
+      ).toBeDefined();
+    });
   });
 
   describe("library", () => {

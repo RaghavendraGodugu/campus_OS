@@ -83,10 +83,15 @@ async function createHostel({ user, payload, req }) {
 }
 
 async function listRooms(hostelId) {
-  return HostelRoom.find({ hostel: hostelId, isActive: true })
+  const rooms = await HostelRoom.find({ hostel: hostelId, isActive: true })
     .populate(...ROOM_POPULATE)
     .sort({ number: 1 })
     .lean();
+
+  // `lean()` skips the model's toJSON transform, so the client's `id` field
+  // would be absent. The allocation form sends this id back; without it the
+  // request carries an undefined room and fails validation.
+  return rooms.map((room) => ({ ...room, id: String(room._id) }));
 }
 
 async function createRoom({ user, hostelId, payload, req }) {
@@ -178,7 +183,7 @@ async function vacate({ user, id, req }) {
 async function listAllocations({ status } = {}) {
   const filter = {};
   if (status) filter.status = status;
-  return HostelAllocation.find(filter)
+  const allocations = await HostelAllocation.find(filter)
     .populate({
       path: "student",
       select: "rollNumber semester",
@@ -188,6 +193,13 @@ async function listAllocations({ status } = {}) {
     .populate("room", "number capacity")
     .sort({ allocatedAt: -1 })
     .lean();
+
+  // Same reason as listRooms: lean documents keep `_id` but have no `id`, and
+  // the Vacate action addresses the allocation by its id.
+  return allocations.map((allocation) => ({
+    ...allocation,
+    id: String(allocation._id),
+  }));
 }
 
 async function mine({ user }) {
