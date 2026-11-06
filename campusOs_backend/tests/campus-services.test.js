@@ -322,6 +322,61 @@ describe("campus services", () => {
       const stored = await Book.findById(book.id).lean();
       expect(stored.copiesIssued).toBe(0);
     });
+
+    it("finds a student by roll number or name while issuing", async () => {
+      const world = await seed();
+      const { agent } = await loginAs(world.librarian);
+
+      const byRoll = await agent.get(
+        `/api/v1/library/students?q=${encodeURIComponent(world.first.student.rollNumber)}`
+      );
+      expect(byRoll.status).toBe(200);
+      expect(byRoll.body.data.students.map((row) => row.studentId)).toContain(
+        String(world.first.student._id)
+      );
+
+      const firstName = world.first.user.fullName.split(" ")[0];
+      const byName = await agent.get(
+        `/api/v1/library/students?q=${encodeURIComponent(firstName)}`
+      );
+      expect(byName.status).toBe(200);
+      expect(byName.body.data.students.map((row) => row.studentId)).toContain(
+        String(world.first.student._id)
+      );
+    });
+
+    it("refuses the student lookup without the issuing permission", async () => {
+      const world = await seed();
+      const { agent } = await loginAs(world.first.user);
+
+      const res = await agent.get("/api/v1/library/students?q=ro");
+
+      expect(res.status).toBe(403);
+    });
+
+    it("returns the ids the issue screen sends back", async () => {
+      const world = await seed();
+      const book = await libraryService.createBook({
+        user: world.librarian,
+        payload: { title: "Dune", author: "Frank Herbert", copiesTotal: 2 },
+      });
+
+      // The dialog posts `book.id` and returns `issue.id`. A lean document has
+      // `_id` but no `id`, so omitting the mapping yields `undefined` ids.
+      const books = await libraryService.listBooks({});
+      expect(books.find((row) => row.id === String(book.id))).toBeDefined();
+
+      const issue = await libraryService.issueBook({
+        user: world.librarian,
+        payload: {
+          book: book.id,
+          student: String(world.first.student._id),
+          dueAt: new Date("2026-11-01"),
+        },
+      });
+      const issues = await libraryService.listIssues({});
+      expect(issues.find((row) => row.id === String(issue.id))).toBeDefined();
+    });
   });
 
   describe("placements", () => {

@@ -59,7 +59,7 @@ const mine = asyncHandler(async (req, res) =>
 const searchStudents = asyncHandler(async (req, res) =>
   sendSuccess(res, {
     message: "Students found",
-    data: { students: await service.searchStudents({ q: req.query.q }) },
+    data: { students: await service.searchStudents(req.validated.query) },
   })
 );
 

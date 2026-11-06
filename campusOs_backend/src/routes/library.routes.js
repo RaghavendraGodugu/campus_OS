@@ -14,9 +14,25 @@ const {
   listBooksQuerySchema,
   issueSchema,
   issueQuerySchema,
+  searchStudentsQuerySchema,
 } = require("../validators/library.validator");
 
 const router = express.Router();
+
+/**
+ * GET /library/students?q=
+ *
+ * Declared before the parameterised routes. Gated on the issuing permission:
+ * it exists so the issue form can turn a name or roll number into a student
+ * id, not as a general directory.
+ */
+router.get(
+  "/library/students",
+  authenticate,
+  requirePermission(P.LIBRARY_ISSUE),
+  validate({ query: searchStudentsQuerySchema }),
+  controller.searchStudents
+);
 
 router.get(
   "/library/books",

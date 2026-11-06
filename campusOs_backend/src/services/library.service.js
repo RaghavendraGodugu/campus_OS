@@ -48,7 +48,8 @@ async function listBooks({ q, category } = {}) {
     const pattern = new RegExp(escapeRegex(q), "i");
     filter.$or = [{ title: pattern }, { author: pattern }, { isbn: pattern }];
   }
-  return Book.find(filter).sort({ title: 1 }).limit(200).lean();
+  const books = await Book.find(filter).sort({ title: 1 }).limit(200).lean();
+  return books.map((book) => ({ ...book, id: String(book._id) }));
 }
 
 async function createBook({ user, payload, req }) {
@@ -144,7 +145,7 @@ async function returnBook({ user, id, req }) {
 async function listIssues({ status } = {}) {
   const filter = {};
   if (status) filter.status = status;
-  return BookIssue.find(filter)
+  const issues = await BookIssue.find(filter)
     .populate("book", "title author")
     .populate({
       path: "student",
@@ -154,6 +155,7 @@ async function listIssues({ status } = {}) {
     .sort({ issuedAt: -1 })
     .limit(200)
     .lean();
+  return issues.map((issue) => ({ ...issue, id: String(issue._id) }));
 }
 
 async function mine({ user }) {
@@ -161,10 +163,11 @@ async function mine({ user }) {
   if (!student) {
     return [];
   }
-  return BookIssue.find({ student: student._id })
+  const issues = await BookIssue.find({ student: student._id })
     .populate("book", "title author category")
     .sort({ issuedAt: -1 })
     .lean();
+  return issues.map((issue) => ({ ...issue, id: String(issue._id) }));
 }
 
 async function searchStudents({ q }) {

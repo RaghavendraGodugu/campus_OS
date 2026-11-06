@@ -41,10 +41,23 @@ const issueQuerySchema = z
   })
   .strict();
 
+/**
+ * Student lookup for the issue form.
+ *
+ * Bounded to what the picker needs: a roll number or a name, two characters
+ * minimum. The directory service applies the same threshold.
+ */
+const searchStudentsQuerySchema = z
+  .object({
+    q: z.string().trim().min(2, "Type at least 2 characters").max(80),
+  })
+  .strict();
+
 module.exports = {
   idParam,
   createBookSchema,
   listBooksQuerySchema,
   issueSchema,
   issueQuerySchema,
+  searchStudentsQuerySchema,
 };

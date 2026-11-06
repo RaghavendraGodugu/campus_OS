@@ -490,6 +490,13 @@ function IssueDialog({ book, onClose }) {
   });
 
   const options = students.data?.data?.students ?? [];
+  const canSearch = q.trim().length >= 2;
+
+  function runSearch() {
+    if (!canSearch) return;
+    setStudentId("");
+    setSearched(q.trim());
+  }
 
   return (
     <Modal
@@ -524,13 +531,41 @@ function IssueDialog({ book, onClose }) {
               className={inputClass}
               value={q}
               onChange={(event) => setQ(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  runSearch();
+                }
+              }}
               placeholder="Roll number or name"
             />
-            <Button variant="secondary" onClick={() => setSearched(q)}>
+            <Button
+              variant="secondary"
+              disabled={!canSearch}
+              onClick={runSearch}
+            >
               <Search className="size-4" aria-hidden="true" /> Search
             </Button>
           </div>
         </Field>
+
+        {students.isFetching && (
+          <p className="text-sm text-ink-500 dark:text-ink-400">
+            Searching students…
+          </p>
+        )}
+
+        {students.isError && (
+          <p role="alert" className="text-sm text-red-600 dark:text-red-300">
+            {students.error?.message ?? "Could not search students."}
+          </p>
+        )}
+
+        {students.isSuccess && options.length === 0 && (
+          <p className="text-sm text-ink-500 dark:text-ink-400">
+            No students match “{searched}”.
+          </p>
+        )}
 
         {options.length > 0 && (
           <Field label="Student" htmlFor="issue-student" required>
